@@ -1,8 +1,14 @@
 from fastapi import FastAPI
+from database import engine, Base
+from routes import auth
 
-app = FastAPI()
+# Create SQLite tables automatically on startup
+Base.metadata.create_all(bind=engine)
 
+app = FastAPI(title="ShiftBridge API", version="1.0.0")
+
+app.include_router(auth.router)
 
 @app.get("/")
-async def root():
-    return {"message": "Hello World"}
+def root():
+    return {"status": "healthy", "service": "ShiftBridge API"}
