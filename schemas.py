@@ -54,3 +54,28 @@ class ProjectResponse(ProjectBase):
     shifts: list[ShiftResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[list[ChatMessage]] = None
+
+class ChatResponse(BaseModel):
+    reply: str
+    tools_used: list[dict] = []
+    updated_shift: Optional[dict] = None
+
+class ToolExecutionRequest(BaseModel):
+    tool_name: str
+    arguments: dict = {}
+
+class ToolExecutionResponse(BaseModel):
+    success: bool
+    result: dict
+
+class RescheduleRequest(BaseModel):
+    new_start_date: str
+    new_length: Optional[int] = None
