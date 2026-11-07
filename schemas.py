@@ -24,3 +24,33 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class ShiftBase(BaseModel):
+    project_id: int
+    owner_id: int
+    start_date: datetime
+    length: int
+
+class ShiftCreate(ShiftBase):
+    pass
+
+class ShiftResponse(ShiftBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ProjectBase(BaseModel):
+    manager_id: int
+    title: str
+
+class ProjectCreate(ProjectBase):
+    pass
+
+class ProjectResponse(ProjectBase):
+    id: int
+    created_at: Optional[datetime] = None
+    workers: list[UserResponse] = []
+    shifts: list[ShiftResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)

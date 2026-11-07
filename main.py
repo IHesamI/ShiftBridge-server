@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from database import engine, Base
+import models
 from routes import auth
 
 # Create SQLite tables automatically on startup
