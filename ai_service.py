@@ -220,13 +220,17 @@ class LocalLLMShiftAssistant:
         messages.append({"role": "user", "content": message})
 
         try:
+            import httpx
+            # Allow up to 215s for local model generation, with a fast 3s connection check if server is down
+            request_timeout = httpx.Timeout(215.0, connect=3.0)
+
             # Call local LLM via OpenAI API
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 tools=tools.OPENAI_TOOLS,
                 tool_choice="auto",
-                timeout=215.0
+                timeout=request_timeout
             )
 
             choice = response.choices[0]
@@ -271,7 +275,7 @@ class LocalLLMShiftAssistant:
                 second_response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    timeout=5.0
+                    timeout=request_timeout
                 )
                 final_reply = second_response.choices[0].message.content or ""
             else:
