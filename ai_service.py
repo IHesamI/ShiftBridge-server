@@ -226,7 +226,7 @@ class LocalLLMShiftAssistant:
                 messages=messages,
                 tools=tools.OPENAI_TOOLS,
                 tool_choice="auto",
-                timeout=5.0
+                timeout=215.0
             )
 
             choice = response.choices[0]
@@ -284,6 +284,7 @@ class LocalLLMShiftAssistant:
             }
 
         except Exception as e:
+            print(str(e))
             logger.info("Local LLM API unavailable (%s); using resilient local engine fallback.", str(e))
             return self._fallback_process(
                 message=message,
