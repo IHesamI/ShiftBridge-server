@@ -17,10 +17,10 @@ def get_auth_token(client, email="alice@test.com", password="password123"):
     return res.json()["access_token"]
 
 def seed_project_and_shifts(db):
-    manager = models.User(email="manager@test.com", hashed_password="hash", full_name="Boss Man")
-    worker1 = models.User(email="alice@test.com", hashed_password=security.get_password_hash("password123"), full_name="Alice Worker")
-    worker2 = models.User(email="bob@test.com", hashed_password="hash", full_name="Bob Builder")
-    worker3 = models.User(email="carol@test.com", hashed_password="hash", full_name="Carol Mason")
+    manager = models.Worker(email="manager@test.com", hashed_password="hash", full_name="Boss Man")
+    worker1 = models.Worker(email="alice@test.com", hashed_password=security.get_password_hash("password123"), full_name="Alice Worker")
+    worker2 = models.Worker(email="bob@test.com", hashed_password="hash", full_name="Bob Builder")
+    worker3 = models.Worker(email="carol@test.com", hashed_password="hash", full_name="Carol Mason")
     db.add_all([manager, worker1, worker2, worker3])
     db.commit()
 

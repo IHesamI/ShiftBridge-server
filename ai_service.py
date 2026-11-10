@@ -74,9 +74,9 @@ class LocalLLMShiftAssistant:
         self,
         message: str,
         db: Session,
-        current_user: models.User,
+        current_user: models.Worker,
         chat_history: Optional[List[Dict[str, str]]] = None
-    ) -> Dict[str, Any]:
+    ) :
         """Local fallback when OpenAI API server endpoint is not running."""
         text = message.strip()
         lower_text = text.lower()
@@ -195,7 +195,7 @@ class LocalLLMShiftAssistant:
         self,
         message: str,
         db: Session,
-        current_user: models.User,
+        current_user: models.Worker,
         chat_history: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """Chat with the local LLM model using the OpenAI API with function/tool calling."""

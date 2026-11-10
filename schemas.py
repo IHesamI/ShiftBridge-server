@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, ConfigDict
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserCreate(BaseModel):
@@ -79,3 +79,68 @@ class ToolExecutionResponse(BaseModel):
 class RescheduleRequest(BaseModel):
     new_start_date: str
     new_length: Optional[int] = None
+
+
+
+class WorkerResponse(BaseModel):
+    id: str
+    name: str
+    role: str
+    department: str
+    max_hours: float
+    current_hours: float
+    avatar: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ShiftResponse(BaseModel):
+    id: str
+    project_id: str
+    worker_id: str
+    day: str
+    type: str
+    shift_time: str
+    hours: float
+    note: Optional[str] = None
+    updated_by_ai: bool
+    conflict_reason: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ProjectResponse(BaseModel):
+    id: str
+    manager_id: str
+    title: str
+    workers: List[WorkerResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class ScenarioResponse(BaseModel):
+    id: str
+    affected_worker_id: str
+    affected_worker_name: str
+    conflict_day: str
+    original_shift: str
+    reason: str
+    constraint: str
+    prompt_text: str
+
+    class Config:
+        from_attributes = True
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    sender: str
+    role_name: Optional[str] = None
+    text: str
+    timestamp: str
+    is_pending_approval: Optional[bool] = None
+    proposal_id: Optional[str] = None
+    options: Optional[List[Dict[str, Any]]] = None
+    approval_state: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True

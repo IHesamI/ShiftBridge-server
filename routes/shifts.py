@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -6,46 +7,44 @@ from database import get_db
 from routes.auth import get_current_user
 import models
 import schemas
-import tools
 
-router = APIRouter(prefix="/shifts", tags=["Shifts"])
+router = APIRouter(prefix="/data", tags=["Data Models Retrieval"])
 
-@router.get("/my-shifts")
-def get_my_shifts(
-    project_id: Optional[int] = None,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Retrieve all shifts belonging to the authenticated user."""
-    return tools.tool_get_my_shifts(db=db, current_user_id=current_user.id, project_id=project_id)
+@router.get("/projects", response_model=List[schemas.ProjectResponse])
+def get_projects(db: Session = Depends(get_db), ):
+    """Retrieve all projects including assigned workers and manager details."""
+    projects = db.query(models.Project).all()
+    return projects
 
-@router.get("/project/{project_id}/workers")
-def get_other_workers_shifts(
-    project_id: int,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Retrieve shifts of other workers in the project."""
-    return tools.tool_get_other_workers_shifts(db=db, current_user_id=current_user.id, project_id=project_id)
+@router.get("/projects/{project_id}", response_model=schemas.ProjectResponse)
+def get_project_by_id(project_id: str, db: Session = Depends(get_db), ):
+    """Retrieve a specific project by its ID."""
+    project = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
 
-@router.patch("/{shift_id}/reschedule")
-def reschedule_shift(
-    shift_id: int,
-    request: schemas.RescheduleRequest,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Directly reschedule an existing shift for the authenticated user."""
-    result = tools.tool_reschedule_shift(
-        db=db,
-        current_user_id=current_user.id,
-        new_start_date=request.new_start_date,
-        shift_id=shift_id,
-        new_length=request.new_length
-    )
-    if not result.get("success"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to reschedule shift")
-        )
-    return result
+@router.get("/workers", response_model=List[schemas.WorkerResponse])
+def get_workers(db: Session = Depends(get_db), 
+                # current_user = Depends(get_current_user)
+                ):
+    """Retrieve all seeded workers."""
+    return db.query(models.Worker).all()
+
+@router.get("/shifts", response_model=List[schemas.ShiftResponse])
+def get_all_shifts(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    """Retrieve all scheduled shifts, optionally filtered by project ID."""
+    query = db.query(models.Shift)
+    if project_id:
+        query = query.filter(models.Shift.project_id == project_id)
+    return query.all()
+
+@router.get("/scenarios", response_model=List[schemas.ScenarioResponse])
+def get_scenarios(db: Session = Depends(get_db), ):
+    """Retrieve all scheduling conflict scenarios."""
+    return db.query(models.Scenario).all()
+
+@router.get("/proposals", response_model=List[schemas.ChatMessageResponse])
+def get_chat_messages(db: Session = Depends(get_db), ):
+    """Retrieve all chat messages, options, and proposal/approval states."""
+    return db.query(models.ChatMessage).all()

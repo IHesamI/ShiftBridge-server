@@ -2,13 +2,13 @@
 
 Creates:
 - 1 Manager user
-- 15 Worker users
-- 1 Project with the manager and all 15 workers assigned
-- Initial scheduled shifts for workers across upcoming days
+- 15 Workers with specific emails, roles, departments, avatars, and hour metrics
+- 1 Project with the manager and all 15 workers assigned via association table
+- Initial scheduled shifts for workers across days of the week
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
 
@@ -17,30 +17,33 @@ import models
 import security
 
 WORKERS_DATA = [
-    {"email": "worker1@shiftbridge.com", "full_name": "Alex Morgan"},
-    {"email": "worker2@shiftbridge.com", "full_name": "Brian Davis"},
-    {"email": "worker3@shiftbridge.com", "full_name": "Chloe Bennett"},
-    {"email": "worker4@shiftbridge.com", "full_name": "David Miller"},
-    {"email": "worker5@shiftbridge.com", "full_name": "Elena Rostova"},
-    {"email": "worker6@shiftbridge.com", "full_name": "Felix Vance"},
-    {"email": "worker7@shiftbridge.com", "full_name": "Grace Hopper"},
-    {"email": "worker8@shiftbridge.com", "full_name": "Hector Santos"},
-    {"email": "worker9@shiftbridge.com", "full_name": "Iris Chen"},
-    {"email": "worker10@shiftbridge.com", "full_name": "James Wilson"},
-    {"email": "worker11@shiftbridge.com", "full_name": "Kavita Patel"},
-    {"email": "worker12@shiftbridge.com", "full_name": "Liam O'Connor"},
-    {"email": "worker13@shiftbridge.com", "full_name": "Maya Lin"},
-    {"email": "worker14@shiftbridge.com", "full_name": "Noah Taylor"},
-    {"email": "worker15@shiftbridge.com", "full_name": "Olivia Martinez"},
+    {"id": "w1", "email": "worker1@shiftbridge.com", "name": "Alex Morgan", "role": "Senior RN", "department": "Emergency", "max_hours": 40.0, "current_hours": 32.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex"},
+    {"id": "w2", "email": "worker2@shiftbridge.com", "name": "Brian Davis", "role": "RN", "department": "ICU", "max_hours": 40.0, "current_hours": 36.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Brian"},
+    {"id": "w3", "email": "worker3@shiftbridge.com", "name": "Chloe Bennett", "role": "Charge Nurse", "department": "Emergency", "max_hours": 40.0, "current_hours": 40.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Chloe"},
+    {"id": "w4", "email": "worker4@shiftbridge.com", "name": "David Miller", "role": "LPN", "department": "Pediatrics", "max_hours": 36.0, "current_hours": 24.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=David"},
+    {"id": "w5", "email": "worker5@shiftbridge.com", "name": "Elena Rostova", "role": "RN", "department": "Surgery", "max_hours": 40.0, "current_hours": 38.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Elena"},
+    {"id": "w6", "email": "worker6@shiftbridge.com", "name": "Felix Vance", "role": "Support Specialist", "department": "General", "max_hours": 30.0, "current_hours": 20.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"},
+    {"id": "w7", "email": "worker7@shiftbridge.com", "name": "Grace Hopper", "role": "Senior RN", "department": "ICU", "max_hours": 40.0, "current_hours": 40.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Grace"},
+    {"id": "w8", "email": "worker8@shiftbridge.com", "name": "Hector Santos", "role": "RN", "department": "Pediatrics", "max_hours": 40.0, "current_hours": 32.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Hector"},
+    {"id": "w9", "email": "worker9@shiftbridge.com", "name": "Iris Chen", "role": "Charge Nurse", "department": "Surgery", "max_hours": 40.0, "current_hours": 36.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Iris"},
+    {"id": "w10", "email": "worker10@shiftbridge.com", "name": "James Wilson", "role": "LPN", "department": "Emergency", "max_hours": 36.0, "current_hours": 28.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=James"},
+    {"id": "w11", "email": "worker11@shiftbridge.com", "name": "Kavita Patel", "role": "RN", "department": "General", "max_hours": 40.0, "current_hours": 34.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Kavita"},
+    {"id": "w12", "email": "worker12@shiftbridge.com", "name": "Liam O'Connor", "role": "Support Specialist", "department": "ICU", "max_hours": 30.0, "current_hours": 25.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Liam"},
+    {"id": "w13", "email": "worker13@shiftbridge.com", "name": "Maya Lin", "role": "Senior RN", "department": "Pediatrics", "max_hours": 40.0, "current_hours": 38.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Maya"},
+    {"id": "w14", "email": "worker14@shiftbridge.com", "name": "Noah Taylor", "role": "RN", "department": "Emergency", "max_hours": 40.0, "current_hours": 30.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Noah"},
+    {"id": "w15", "email": "worker15@shiftbridge.com", "name": "Olivia Martinez", "role": "LPN", "department": "Surgery", "max_hours": 36.0, "current_hours": 32.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Olivia"},
 ]
 
 MANAGER_DATA = {
+    "id": "m1",
     "email": "manager@shiftbridge.com",
     "full_name": "Sarah Connor (Project Manager)"
 }
 
-PROJECT_TITLE = "Metropolis Skyline Project"
+PROJECT_ID = "proj_1"
+PROJECT_TITLE = "Metropolis Healthcare Scheduling"
 DEFAULT_PASSWORD = "password123"
+DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def seed_database(db: Optional[Session] = None, reset: bool = False):
@@ -51,23 +54,18 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
         owns_session = True
 
     try:
-        # Ensure all tables exist
+        if reset:
+            print("Resetting and dropping database tables...")
+            Base.metadata.drop_all(bind=engine)
+
+        # Ensure all tables exist with the latest schema
         Base.metadata.create_all(bind=engine)
 
-        if reset:
-            print("Resetting database tables...")
-            db.query(models.Shift).delete()
-            db.execute(models.project_workers.delete())
-            db.query(models.Project).delete()
-            # Delete only seeded test users to preserve custom users if any
-            emails_to_delete = [w["email"] for w in WORKERS_DATA] + [MANAGER_DATA["email"]]
-            db.query(models.User).filter(models.User.email.in_(emails_to_delete)).delete(synchronize_session=False)
-            db.commit()
-
         # 1. Create or get Manager
-        manager = db.query(models.User).filter(models.User.email == MANAGER_DATA["email"]).first()
+        manager = db.query(models.Manager).filter(models.Manager.email == MANAGER_DATA["email"]).first()
         if not manager:
-            manager = models.User(
+            manager = models.Manager(
+                id=MANAGER_DATA["id"],
                 email=MANAGER_DATA["email"],
                 hashed_password=security.get_password_hash(DEFAULT_PASSWORD),
                 full_name=MANAGER_DATA["full_name"],
@@ -83,26 +81,32 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
         # 2. Create or get 15 Workers
         workers = []
         for w_data in WORKERS_DATA:
-            worker = db.query(models.User).filter(models.User.email == w_data["email"]).first()
+            worker = db.query(models.Worker).filter(models.Worker.id == w_data["id"]).first()
             if not worker:
-                worker = models.User(
+                worker = models.Worker(
+                    id=w_data["id"],
                     email=w_data["email"],
                     hashed_password=security.get_password_hash(DEFAULT_PASSWORD),
-                    full_name=w_data["full_name"],
-                    is_active=True
+                    name=w_data["name"],
+                    role=w_data["role"],
+                    department=w_data["department"],
+                    max_hours=w_data["max_hours"],
+                    current_hours=w_data["current_hours"],
+                    avatar=w_data["avatar"]
                 )
                 db.add(worker)
                 db.commit()
                 db.refresh(worker)
-                print(f"Created Worker: {worker.full_name} ({worker.email}) [ID: {worker.id}]")
+                print(f"Created Worker: {worker.name} ({worker.role}) [ID: {worker.id}],")
             else:
-                print(f"Worker already exists: {worker.email} [ID: {worker.id}]")
+                print(f"Worker already exists: {worker.name} [ID: {worker.id}]")
             workers.append(worker)
 
         # 3. Create or get Project with the Manager and all 15 Workers
-        project = db.query(models.Project).filter(models.Project.title == PROJECT_TITLE).first()
+        project = db.query(models.Project).filter(models.Project.id == PROJECT_ID).first()
         if not project:
             project = models.Project(
+                id=PROJECT_ID,
                 manager_id=manager.id,
                 title=PROJECT_TITLE,
                 workers=workers
@@ -124,28 +128,25 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
             db.refresh(project)
             print(f"\nProject '{project.title}' already exists [ID: {project.id}] with {len(project.workers)} workers.")
 
-        # 4. Create sample upcoming shifts for the workers
-        now = datetime.now()
+        # 4. Create sample shifts for workers across days of the week
         shifts_created = 0
         for i, worker in enumerate(workers):
-            # Check if this worker already has a shift in this project
-            existing_shift = db.query(models.Shift).filter(
-                models.Shift.project_id == project.id,
-                models.Shift.owner_id == worker.id
-            ).first()
-
+            day = DAYS_OF_WEEK[i % len(DAYS_OF_WEEK)]
+            shift_id = f"shift_{worker.id}_{day.lower()}"
+            
+            existing_shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
             if not existing_shift:
-                # Stagger shifts across upcoming days and hours
-                day_offset = (i % 5) + 1  # 1 to 5 days from now
-                start_hour = 8 if i % 2 == 0 else 16  # morning (8am) or evening (4pm)
-                shift_date = (now + timedelta(days=day_offset)).replace(
-                    hour=start_hour, minute=0, second=0, microsecond=0
-                )
                 shift = models.Shift(
+                    id=shift_id,
                     project_id=project.id,
-                    owner_id=worker.id,
-                    start_date=shift_date,
-                    length=8
+                    worker_id=worker.id,
+                    day=day,
+                    type="regular" if i % 4 != 0 else "conflict",
+                    shift_time="07:00 - 15:30",
+                    hours=8.0,
+                    note="Regular scheduled shift" if i % 4 != 0 else "Overtime conflict detected",
+                    updated_by_ai=False,
+                    conflict_reason="Exceeds max weekly hours" if i % 4 == 0 else None
                 )
                 db.add(shift)
                 shifts_created += 1
@@ -161,7 +162,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
         print("=" * 60)
         print(f"Project: {project.title} (ID: {project.id})")
         print(f"Manager: {manager.email} | Password: {DEFAULT_PASSWORD}")
-        print(f"Workers: {len(workers)} users created/assigned | Default Password: {DEFAULT_PASSWORD}")
+        print(f"Workers: {len(workers)} workers created/assigned with credentials")
         print("=" * 60)
 
         return {

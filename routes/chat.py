@@ -14,7 +14,7 @@ router = APIRouter(prefix="/chat", tags=["AI Chat & Tools"])
 @router.post("", response_model=schemas.ChatResponse)
 def chat_with_ai(
     request: schemas.ChatRequest,
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.Worker = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Chat with the local AI model to reschedule shifts and inspect other workers' schedules."""
@@ -32,7 +32,7 @@ def chat_with_ai(
     return result
 
 @router.get("/tools")
-def get_available_tools(current_user: models.User = Depends(get_current_user)):
+def get_available_tools(current_user: models.Worker = Depends(get_current_user)):
     """Exposes tool definitions for the local AI model to perform function calling."""
     return {
         "tools": tools.AVAILABLE_TOOLS
@@ -41,7 +41,7 @@ def get_available_tools(current_user: models.User = Depends(get_current_user)):
 @router.post("/tools/execute", response_model=schemas.ToolExecutionResponse)
 def execute_tool(
     request: schemas.ToolExecutionRequest,
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.Worker = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Execute a specific tool by name with arguments for the local AI model."""

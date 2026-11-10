@@ -85,7 +85,7 @@ def tool_get_other_workers_shifts(
         query = query.filter(models.Shift.project_id == project_id)
     else:
         # Get projects where current user is manager or worker
-        user = db.query(models.User).filter(models.User.id == current_user_id).first()
+        user = db.query(models.Worker).filter(models.Worker.id == current_user_id).first()
         if user:
             user_project_ids = [p.id for p in user.projects]
             managed_ids = [p.id for p in user.managed_projects]
