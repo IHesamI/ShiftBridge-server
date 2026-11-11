@@ -10,7 +10,7 @@ import schemas
 
 router = APIRouter(prefix="/data", tags=["Data Models Retrieval"])
 
-@router.get("/projects", response_model=List[schemas.ProjectResponse])
+@router.get("/projects", response_model=List[schemas.ProjectResponse],current_user = Depends(get_current_user))
 def get_projects(db: Session = Depends(get_db), ):
     """Retrieve all projects including assigned workers and manager details."""
     projects = db.query(models.Project).all()
@@ -26,25 +26,25 @@ def get_project_by_id(project_id: str, db: Session = Depends(get_db), ):
 
 @router.get("/workers", response_model=List[schemas.WorkerResponse])
 def get_workers(db: Session = Depends(get_db), 
-                # current_user = Depends(get_current_user)
+                current_user = Depends(get_current_user)
                 ):
     """Retrieve all seeded workers."""
     return db.query(models.Worker).all()
 
 @router.get("/shifts", response_model=List[schemas.ShiftResponse])
-def get_all_shifts(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+def get_all_shifts(project_id: Optional[str] = None, db: Session = Depends(get_db),current_user = Depends(get_current_user)):
     """Retrieve all scheduled shifts, optionally filtered by project ID."""
     query = db.query(models.Shift)
     if project_id:
         query = query.filter(models.Shift.project_id == project_id)
     return query.all()
 
-@router.get("/scenarios", response_model=List[schemas.ScenarioResponse])
+@router.get("/scenarios", response_model=List[schemas.ScenarioResponse],current_user = Depends(get_current_user))
 def get_scenarios(db: Session = Depends(get_db), ):
     """Retrieve all scheduling conflict scenarios."""
     return db.query(models.Scenario).all()
 
-@router.get("/proposals", response_model=List[schemas.ChatMessageResponse])
+@router.get("/proposals", response_model=List[schemas.ChatMessageResponse],current_user = Depends(get_current_user))
 def get_chat_messages(db: Session = Depends(get_db), ):
     """Retrieve all chat messages, options, and proposal/approval states."""
     return db.query(models.ChatMessage).all()
