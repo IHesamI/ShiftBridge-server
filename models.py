@@ -53,7 +53,6 @@ class Worker(Base):
     # Relationships
     projects = relationship("Project", secondary=project_workers, back_populates="workers")
     shifts = relationship("Shift", back_populates="worker", cascade="all, delete-orphan")
-    scenarios = relationship("Scenario", back_populates="affected_worker", cascade="all, delete-orphan")
 
 class Shift(Base):
     __tablename__ = "shifts"
@@ -63,8 +62,8 @@ class Shift(Base):
     worker_id = Column(String, ForeignKey("workers.id", ondelete="CASCADE"), nullable=False)
     day = Column(String, nullable=False)  # 'Monday' | 'Tuesday' | ... | 'Sunday'
     type = Column(String, nullable=False, default="regular")  # 'regular' | 'conflict' | 'updated' | 'off'
-    shift_time = Column(String, nullable=False)
-    hours = Column(Float, nullable=False)
+    start_time = Column(String, nullable=False)
+    length = Column(Float, nullable=False)
     note = Column(String, nullable=True)
     updated_by_ai = Column(Boolean, default=False)
     conflict_reason = Column(String, nullable=True)
@@ -73,21 +72,15 @@ class Shift(Base):
     project = relationship("Project", back_populates="shifts")
     worker = relationship("Worker", back_populates="shifts")
 
-class Scenario(Base):
-    __tablename__ = "scenarios"
+class Proposal(Base):
+    __tablename__ = "proposals"
 
     id = Column(String, primary_key=True, index=True)
-    affected_worker_id = Column(String, ForeignKey("workers.id", ondelete="CASCADE"), nullable=False)
-    affected_worker_name = Column(String, nullable=False)
-    conflict_day = Column(String, nullable=False)
-    original_shift = Column(String, nullable=False)
-    reason = Column(String, nullable=False)
-    constraint = Column(String, nullable=False)
-    prompt_text = Column(String, nullable=False)
-
-    # Relationships
-    affected_worker = relationship("Worker", back_populates="scenarios")
-
+    worker_id = Column(String, ForeignKey("workers.id", ondelete="CASCADE"), nullable=False)
+    new_shift_data = Column(JSON, nullable=True)  
+    isManagerApproved = Column(Boolean, default=False)
+    isWorkerApproved = Column(Boolean, default=False)
+    worker = relationship("Worker")
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 

@@ -1,7 +1,7 @@
 from datetime import datetime
+import uuid
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from dateutil import parser as date_parser
 import models
 
 # Tool definitions metadata (compatible with OpenAI/Gemini/local function calling standards)
@@ -13,7 +13,7 @@ AVAILABLE_TOOLS = [
             "type": "object",
             "properties": {
                 "project_id": {
-                    "type": "integer",
+                    "type": "string",
                     "description": "The ID of the project. If not provided, coworkers' shifts across all user's projects will be retrieved."
                 }
             },
@@ -27,7 +27,7 @@ AVAILABLE_TOOLS = [
             "type": "object",
             "properties": {
                 "project_id": {
-                    "type": "integer",
+                    "type": "string",
                     "description": "Optional project ID to filter user's shifts."
                 }
             },
@@ -35,25 +35,33 @@ AVAILABLE_TOOLS = [
         }
     },
     {
-        "name": "reschedule_shift",
-        "description": "Change/reschedule an existing shift of the current user to a new start date and time, and optionally change its length.",
+        "name": "create_reschedule_proposal",
+        "description": "Create a reschedule proposal for the worker shift, storing the new shift details as a JSON payload in the database.",
         "parameters": {
             "type": "object",
             "properties": {
                 "shift_id": {
-                    "type": "integer",
-                    "description": "The ID of the shift to reschedule. If omitted and the user has a single shift, that shift is selected."
-                },
-                "new_start_date": {
                     "type": "string",
-                    "description": "The new start date and time (e.g. '2026-11-10T09:00:00' or '2026-11-10 09:00')."
+                    "description": "The ID of the shift to reschedule."
                 },
-                "new_length": {
-                    "type": "integer",
-                    "description": "Optional new duration/length of the shift in hours."
+                "day": {
+                    "type": "string",
+                    "description": "The proposed day of the week (e.g. 'Monday', 'Tuesday')."
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "The proposed start time (e.g. '07:00')."
+                },
+                "length": {
+                    "type": "number",
+                    "description": "The proposed duration/length of the shift in hours (e.g. 8.0)."
+                },
+                "note": {
+                    "type": "string",
+                    "description": "Optional note or reason for the reschedule proposal."
                 }
             },
-            "required": ["new_start_date"]
+            "required": ["shift_id", "day", "start_time", "length"]
         }
     }
 ]
@@ -74,40 +82,39 @@ OPENAI_TOOLS = [
 
 def tool_get_other_workers_shifts(
     db: Session,
-    current_user_id: int,
-    project_id: Optional[int] = None
+    current_user_id: str,
+    project_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Retrieve other workers' shifts for a project or all projects the user is involved in."""
-    # Find projects the user is associated with
-    query = db.query(models.Shift).filter(models.Shift.owner_id != current_user_id)
+    query = db.query(models.Shift).filter(models.Shift.worker_id != current_user_id)
     
     if project_id is not None:
         query = query.filter(models.Shift.project_id == project_id)
     else:
-        # Get projects where current user is manager or worker
         user = db.query(models.Worker).filter(models.Worker.id == current_user_id).first()
         if user:
             user_project_ids = [p.id for p in user.projects]
-            managed_ids = [p.id for p in user.managed_projects]
-            all_project_ids = list(set(user_project_ids + managed_ids))
-            if all_project_ids:
-                query = query.filter(models.Shift.project_id.in_(all_project_ids))
+            if user_project_ids:
+                query = query.filter(models.Shift.project_id.in_(user_project_ids))
 
-    shifts = query.order_by(models.Shift.start_date.asc()).all()
+    shifts = query.all()
     
     results = []
     for s in shifts:
-        owner_name = s.owner.full_name or s.owner.email if s.owner else "Unknown"
-        project_title = s.project.title if s.project else "Unknown"
+        worker = db.query(models.Worker).filter(models.Worker.id == s.worker_id).first()
+        project = db.query(models.Project).filter(models.Project.id == s.project_id).first()
         results.append({
             "shift_id": s.id,
             "project_id": s.project_id,
-            "project_title": project_title,
-            "worker_id": s.owner_id,
-            "worker_name": owner_name,
-            "worker_email": s.owner.email if s.owner else "",
-            "start_date": s.start_date.isoformat(),
-            "length": s.length
+            "project_title": project.title if project else "Unknown",
+            "worker_id": s.worker_id,
+            "worker_name": worker.name if worker else "Unknown",
+            "worker_email": worker.email if worker else "",
+            "day": s.day,
+            "type": s.type,
+            "start_time": s.start_time,
+            "length": s.length,
+            "note": s.note
         })
         
     return {
@@ -119,24 +126,28 @@ def tool_get_other_workers_shifts(
 
 def tool_get_my_shifts(
     db: Session,
-    current_user_id: int,
-    project_id: Optional[int] = None
+    current_user_id: str,
+    project_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Retrieve all shifts belonging to the current user."""
-    query = db.query(models.Shift).filter(models.Shift.owner_id == current_user_id)
-    if project_id is not None:
-        query = query.filter(models.Shift.project_id == project_id)
+    query = db.query(models.Shift).filter(models.Shift.worker_id == current_user_id)
+    
+    # if project_id is not None:
+    #     query = query.filter(models.Shift.project_id == project_id)
         
-    shifts = query.order_by(models.Shift.start_date.asc()).all()
+    shifts = query.all()
     results = []
     for s in shifts:
-        project_title = s.project.title if s.project else "Unknown"
+        project = db.query(models.Project).filter(models.Project.id == s.project_id).first()
         results.append({
             "shift_id": s.id,
             "project_id": s.project_id,
-            "project_title": project_title,
-            "start_date": s.start_date.isoformat(),
-            "length": s.length
+            "project_title": project.title if project else "Unknown",
+            "day": s.day,
+            "type": s.type,
+            "start_time": s.start_time,
+            "length": s.length,
+            "note": s.note
         })
         
     return {
@@ -146,78 +157,67 @@ def tool_get_my_shifts(
     }
 
 
-def tool_reschedule_shift(
+def tool_create_reschedule_proposal(
     db: Session,
-    current_user_id: int,
-    new_start_date: str,
-    shift_id: Optional[int] = None,
-    new_length: Optional[int] = None
+    current_user_id: str,
+    shift_id: str,
+    day: str,
+    start_time: str,
+    length: float,
+    note: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Reschedule the current user's shift to a new start date/time and optionally new length."""
-    # Find shift
-    if shift_id is not None:
-        shift = db.query(models.Shift).filter(
-            models.Shift.id == shift_id,
-            models.Shift.owner_id == current_user_id
-        ).first()
-        if not shift:
-            return {
-                "success": False,
-                "error": f"Shift with ID {shift_id} not found or does not belong to you."
-            }
-    else:
-        # Try to automatically pick user's shift if there's only one
-        user_shifts = db.query(models.Shift).filter(
-            models.Shift.owner_id == current_user_id
-        ).order_by(models.Shift.start_date.asc()).all()
-        
-        if not user_shifts:
-            return {
-                "success": False,
-                "error": "No shifts found for you to reschedule."
-            }
-        elif len(user_shifts) == 1:
-            shift = user_shifts[0]
-        else:
-            return {
-                "success": False,
-                "error": f"You have multiple shifts ({len(user_shifts)}). Please specify the shift_id you want to reschedule.",
-                "available_shifts": [
-                    {"shift_id": s.id, "project_id": s.project_id, "start_date": s.start_date.isoformat(), "length": s.length}
-                    for s in user_shifts
-                ]
-            }
-
-    # Parse date
-    try:
-        parsed_date = date_parser.parse(new_start_date)
-    except Exception as e:
+    """Create a new reschedule proposal record in the database using the updated model schema."""
+    shift = db.query(models.Shift).filter(
+        models.Shift.id == shift_id,
+        models.Shift.worker_id == current_user_id
+    ).first()
+    if not shift:
         return {
             "success": False,
-            "error": f"Could not parse date '{new_start_date}'. Please provide a valid date format (e.g. YYYY-MM-DD HH:MM)."
+            "error": f"Shift with ID {shift_id} not found or does not belong to you."
         }
+    print('creating proposal')
+    proposal_id = str(uuid.uuid4())
+    new_shift_data_payload = {
+        "shift_id": shift.id,
+        "project_id": shift.project_id,
+        "worker_id": current_user_id,
+        "current_day": shift.day,
+        "current_start_time": shift.start_time,
+        "current_length": shift.length,
+        "proposed_day": day,
+        "proposed_start_time": start_time,
+        "proposed_length": length,
+        "note": note or shift.note
+    }
 
-    old_start = shift.start_date.isoformat()
-    old_length = shift.length
+    proposal = models.Proposal(
+        id=proposal_id,
+        worker_id=current_user_id,
+        new_shift_data=new_shift_data_payload,
+        isManagerApproved=False,
+        isWorkerApproved=False
+    )
+    print(proposal)
+    try :
+        db.add(proposal)
+        db.commit()
+        db.refresh(proposal)
+        print('proposal added' )
+    except Exception as e:
+        print('proposal added' ,e)
 
-    shift.start_date = parsed_date
-    if new_length is not None and new_length > 0:
-        shift.length = new_length
-
-    db.commit()
-    db.refresh(shift)
+    
 
     return {
         "success": True,
-        "message": f"Successfully rescheduled shift #{shift.id}.",
-        "shift": {
-            "shift_id": shift.id,
-            "project_id": shift.project_id,
-            "project_title": shift.project.title if shift.project else "Unknown",
-            "previous_start_date": old_start,
-            "new_start_date": shift.start_date.isoformat(),
-            "previous_length": old_length,
-            "new_length": shift.length
+        "message": f"Successfully created reschedule proposal #{proposal.id}.",
+        "proposal": {
+            "proposal_id": proposal.id,
+            "worker_id": proposal.worker_id,
+            "new_shift_data": proposal.new_shift_data,
+            "isManagerApproved": proposal.isManagerApproved,
+            "isWorkerApproved": proposal.isWorkerApproved
         }
     }
 
@@ -226,22 +226,23 @@ def execute_tool_by_name(
     tool_name: str,
     args: Dict[str, Any],
     db: Session,
-    current_user_id: int
+    current_user_id: str
 ) -> Dict[str, Any]:
+    print('args, tool_name:', args, tool_name)
     """Execute a tool by name with arguments."""
     if tool_name == "get_other_workers_shifts":
-        project_id = args.get("project_id")
-        return tool_get_other_workers_shifts(db, current_user_id, project_id=project_id)
+        return tool_get_other_workers_shifts(db, current_user_id, project_id=args.get("project_id"))
     elif tool_name == "get_my_shifts":
-        project_id = args.get("project_id")
-        return tool_get_my_shifts(db, current_user_id, project_id=project_id)
-    elif tool_name == "reschedule_shift":
-        return tool_reschedule_shift(
+        return tool_get_my_shifts(db, current_user_id, project_id=args.get("project_id"))
+    elif tool_name == "create_reschedule_proposal":
+        return tool_create_reschedule_proposal(
             db=db,
             current_user_id=current_user_id,
-            new_start_date=args.get("new_start_date", ""),
-            shift_id=args.get("shift_id"),
-            new_length=args.get("new_length")
+            shift_id=args.get("shift_id", ""),
+            day=args.get("day", ""),
+            start_time=args.get("start_time", ""),
+            length=args.get("length", 8.0),
+            note=args.get("note")
         )
     else:
         return {

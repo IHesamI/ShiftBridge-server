@@ -97,7 +97,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
                 db.add(worker)
                 db.commit()
                 db.refresh(worker)
-                print(f"Created Worker: {worker.name} ({worker.role}) [ID: {worker.id}],")
+                print(f"Created Worker: {worker.name} ({worker.role}) [ID: {worker.id}]")
             else:
                 print(f"Worker already exists: {worker.name} [ID: {worker.id}]")
             workers.append(worker)
@@ -128,7 +128,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
             db.refresh(project)
             print(f"\nProject '{project.title}' already exists [ID: {project.id}] with {len(project.workers)} workers.")
 
-        # 4. Create sample shifts for workers across days of the week
+        # 4. Create sample shifts for workers across days of the week using the updated schema
         shifts_created = 0
         for i, worker in enumerate(workers):
             day = DAYS_OF_WEEK[i % len(DAYS_OF_WEEK)]
@@ -136,17 +136,18 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
             
             existing_shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
             if not existing_shift:
+                is_conflict = (i % 4 == 0)
                 shift = models.Shift(
                     id=shift_id,
                     project_id=project.id,
                     worker_id=worker.id,
                     day=day,
-                    type="regular" if i % 4 != 0 else "conflict",
-                    shift_time="07:00 - 15:30",
-                    hours=8.0,
-                    note="Regular scheduled shift" if i % 4 != 0 else "Overtime conflict detected",
+                    type="conflict" if is_conflict else "regular",
+                    start_time="07:00",
+                    length=8.0,
+                    note="Regular scheduled shift",
                     updated_by_ai=False,
-                    conflict_reason="Exceeds max weekly hours" if i % 4 == 0 else None
+                    conflict_reason="Exceeds max weekly hours" if is_conflict else None
                 )
                 db.add(shift)
                 shifts_created += 1

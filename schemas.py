@@ -8,79 +8,19 @@ class UserCreate(BaseModel):
     full_name: Optional[str] = None
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    username: EmailStr
     password: str
 
 class UserResponse(BaseModel):
-    id: int
+    id: str
     email: EmailStr
-    full_name: Optional[str] = None
-    is_active: bool
-    created_at: datetime
+    name: Optional[str] = None
 
-    # Updated for Pydantic V2
     model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-
-class ShiftBase(BaseModel):
-    project_id: int
-    owner_id: int
-    start_date: datetime
-    length: int
-
-class ShiftCreate(ShiftBase):
-    pass
-
-class ShiftResponse(ShiftBase):
-    id: int
-    created_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-class ProjectBase(BaseModel):
-    manager_id: int
-    title: str
-
-class ProjectCreate(ProjectBase):
-    pass
-
-class ProjectResponse(ProjectBase):
-    id: int
-    created_at: Optional[datetime] = None
-    workers: list[UserResponse] = []
-    shifts: list[ShiftResponse] = []
-
-    model_config = ConfigDict(from_attributes=True)
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-class ChatRequest(BaseModel):
-    message: str
-    history: Optional[list[ChatMessage]] = None
-
-class ChatResponse(BaseModel):
-    reply: str
-    tools_used: list[dict] = []
-    updated_shift: Optional[dict] = None
-
-class ToolExecutionRequest(BaseModel):
-    tool_name: str
-    arguments: dict = {}
-
-class ToolExecutionResponse(BaseModel):
-    success: bool
-    result: dict
-
-class RescheduleRequest(BaseModel):
-    new_start_date: str
-    new_length: Optional[int] = None
-
-
 
 class WorkerResponse(BaseModel):
     id: str
@@ -91,32 +31,81 @@ class WorkerResponse(BaseModel):
     current_hours: float
     avatar: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
-class ShiftResponse(BaseModel):
+class ShiftBase(BaseModel):
+    day: str
+    type: str = "regular"
+    start_time: str
+    length: float
+    note: Optional[str] = None
+
+class ShiftCreate(ShiftBase):
+    project_id: str
+    worker_id: str
+
+class ShiftResponse(ShiftBase):
     id: str
     project_id: str
     worker_id: str
-    day: str
-    type: str
-    shift_time: str
-    hours: float
-    note: Optional[str] = None
     updated_by_ai: bool
     conflict_reason: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+class ProjectBase(BaseModel):
+    title: str
+
+class ProjectCreate(ProjectBase):
+    manager_id: str
 
 class ProjectResponse(BaseModel):
     id: str
     manager_id: str
     title: str
     workers: List[WorkerResponse] = []
+    shifts: List[ShiftResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+class ProposalResponse(BaseModel):
+    id: str
+    worker_id: str
+    new_shift_data: Optional[Dict[str, Any]] = None
+    isManagerApproved: bool
+    isWorkerApproved: bool
+    worker_name: Optional[str] = None
+    worker_email: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[ChatMessage]] = None
+
+class ChatResponse(BaseModel):
+    reply: str
+    tools_used: List[Dict[str, Any]] = []
+    updated_shift: Optional[Dict[str, Any]] = None
+    created_proposal: Optional[Dict[str, Any]]=None
+
+class ToolExecutionRequest(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any] = {}
+
+class ToolExecutionResponse(BaseModel):
+    success: bool
+    result: Dict[str, Any]
+
+class RescheduleRequest(BaseModel):
+    day: str
+    start_time: str
+    length: float
+    note: Optional[str] = None
 
 class ScenarioResponse(BaseModel):
     id: str
@@ -128,8 +117,7 @@ class ScenarioResponse(BaseModel):
     constraint: str
     prompt_text: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ChatMessageResponse(BaseModel):
     id: str
@@ -142,5 +130,8 @@ class ChatMessageResponse(BaseModel):
     options: Optional[List[Dict[str, Any]]] = None
     approval_state: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+class ProposalApprovalRequest(BaseModel):
+    proposal_id: str
+    model_config = ConfigDict(from_attributes=True)
