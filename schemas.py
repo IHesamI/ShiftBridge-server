@@ -15,6 +15,7 @@ class UserResponse(BaseModel):
     id: str
     email: EmailStr
     name: Optional[str] = None
+    is_manager: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,6 +31,7 @@ class WorkerResponse(BaseModel):
     max_hours: float
     current_hours: float
     avatar: Optional[str] = None
+    is_manager: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -128,7 +130,7 @@ class ChatMessageResponse(BaseModel):
     is_pending_approval: Optional[bool] = None
     proposal_id: Optional[str] = None
     options: Optional[List[Dict[str, Any]]] = None
-    approval_state: Optional[Dict[str, Any]] = None
+    approval_state: Optional[List[Dict[str, Any]]] = None # type: ignore
 
     model_config = ConfigDict(from_attributes=True)
 

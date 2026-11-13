@@ -25,7 +25,10 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     new_user = models.Worker(
         email=user.email,
         hashed_password=hashed_password,
-        full_name=user.full_name
+        name=user.full_name,
+        role="Staff",
+        department="General",
+        is_manager=False
     )
     db.add(new_user)
     db.commit()
@@ -45,21 +48,6 @@ def login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
     access_token = security.create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.post("/login-manager", response_model=schemas.Token)
-def login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
-    user = db.query(models.Manager).filter(models.Manager.email == credentials.username).first()
-    if not user or not security.verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    access_token = security.create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -75,18 +63,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
         
     user = db.query(models.Worker).filter(models.Worker.email == email).first()
-    manager_user = db.query(models.Manager).filter(models.Manager.email == email).first()
-    if manager_user:
-        user = {
-            "name":manager_user.full_name,
-            "email":manager_user.email,
-            "id":manager_user.id,
-        }
     if user is None:
         raise credentials_exception
-    return user or manager_user
-
+    return user
 
 @router.get("/me", response_model=schemas.UserResponse)
-def get_user(user: models.Worker =Depends(get_current_user)):
+def get_user(user: models.Worker = Depends(get_current_user)):
     return user

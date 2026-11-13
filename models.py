@@ -11,29 +11,16 @@ project_workers = Table(
     Column("worker_id", String, ForeignKey("workers.id", ondelete="CASCADE"), primary_key=True),
 )
 
-class Manager(Base):
-    __tablename__ = "managers"
-
-    id = Column(String, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-
-    # Relationships
-    projects = relationship("Project", back_populates="manager", cascade="all, delete-orphan")
-
 class Project(Base):
     __tablename__ = "projects"
 
     id = Column(String, primary_key=True, index=True)
-    manager_id = Column(String, ForeignKey("managers.id", ondelete="CASCADE"), nullable=False)
+    manager_id = Column(String, ForeignKey("workers.id", ondelete="CASCADE"), nullable=False)
     title = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.now)
 
     # Relationships
-    manager = relationship("Manager", back_populates="projects")
+    manager = relationship("Worker", foreign_keys=[manager_id], back_populates="managed_projects")
     workers = relationship("Worker", secondary=project_workers, back_populates="projects")
     shifts = relationship("Shift", back_populates="project", cascade="all, delete-orphan")
 
@@ -44,14 +31,16 @@ class Worker(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     name = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # 'Senior RN' | 'Charge Nurse' | 'RN' | 'LPN' | 'Support Specialist'
+    role = Column(String, nullable=False)  # 'Senior RN' | 'Charge Nurse' | 'RN' | 'LPN' | 'Support Specialist' | 'Project Manager'
     department = Column(String, nullable=False)
     max_hours = Column(Float, nullable=False, default=40.0)
     current_hours = Column(Float, nullable=False, default=0.0)
     avatar = Column(String, nullable=True)
+    is_manager = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     projects = relationship("Project", secondary=project_workers, back_populates="workers")
+    managed_projects = relationship("Project", foreign_keys=[Project.manager_id], back_populates="manager", cascade="all, delete-orphan")
     shifts = relationship("Shift", back_populates="worker", cascade="all, delete-orphan")
 
 class Shift(Base):
@@ -81,6 +70,7 @@ class Proposal(Base):
     isManagerApproved = Column(Boolean, default=False)
     isWorkerApproved = Column(Boolean, default=False)
     worker = relationship("Worker")
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
