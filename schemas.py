@@ -1,7 +1,6 @@
 from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -137,3 +136,12 @@ class ChatMessageResponse(BaseModel):
 class ProposalApprovalRequest(BaseModel):
     proposal_id: str
     model_config = ConfigDict(from_attributes=True)
+
+
+
+class ProposalApprovalResponse(BaseModel):
+    success: bool
+    message: str
+    deleted: bool = False
+    new_shift: Optional[ShiftResponse] = None
+    proposal: Optional[ProposalResponse] = None

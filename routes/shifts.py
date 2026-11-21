@@ -69,86 +69,86 @@ def get_proposals(db: Session = Depends(get_db), current_user = Depends(get_curr
 
     return response_data
 
-@router.post("/approve")
+@router.post("/approve", response_model=schemas.ProposalApprovalResponse)
 def approve_proposal(
     payload: schemas.ProposalApprovalRequest,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
 ):
     """Approve a proposal as either the assigned worker or the supervising manager."""
     proposal = db.query(models.Proposal).filter(models.Proposal.id == payload.proposal_id).first()
     if not proposal:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
-    
-    # Check if current_user is the worker who owns the proposal
+
+    # --- who is approving? ---
     if proposal.worker_id == current_user.id:
         proposal.isWorkerApproved = True
     elif current_user.is_manager:
-        # Verify if current_user is a manager supervising the worker associated with this proposal
         is_manager_of_worker = db.query(models.Project).join(models.project_workers).filter(
             models.Project.manager_id == current_user.id,
-            models.project_workers.c.worker_id == proposal.worker_id
+            models.project_workers.c.worker_id == proposal.worker_id,
         ).first() is not None
-        
-        if is_manager_of_worker:
-            proposal.isManagerApproved = True
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to approve this proposal"
-            )
+        if not is_manager_of_worker:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Not authorized to approve this proposal")
+        proposal.isManagerApproved = True
     else:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to approve this proposal"
-        )
-    
-    # Check if both worker and manager have approved
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Not authorized to approve this proposal")
+
+    # --- fully approved → apply shift, delete proposal ---
     if proposal.isWorkerApproved and proposal.isManagerApproved:
-        new_shift=None
+        result_shift = None  # <-- always defined
+
         if proposal.new_shift_data:
             shift_data = dict(proposal.new_shift_data)
-            
-            # Extract proposal metadata that should NOT go on the Shift model
+
             shift_id = shift_data.pop("shift_id", None)
             shift_data.pop("note", None)
-            
-            # Remove "current_*" fields — they describe the pre-change state, not the new shift
             shift_data.pop("current_day", None)
             shift_data.pop("current_start_time", None)
             shift_data.pop("current_length", None)
-            
-            # Map proposed_* fields to the actual Shift fields
+
             if "proposed_day" in shift_data:
                 shift_data["day"] = shift_data.pop("proposed_day")
             if "proposed_start_time" in shift_data:
                 shift_data["start_time"] = shift_data.pop("proposed_start_time")
             if "proposed_length" in shift_data:
                 shift_data["length"] = shift_data.pop("proposed_length")
-            
-            # Ensure worker_id is set
-            if "worker_id" not in shift_data:
-                shift_data["worker_id"] = proposal.worker_id
-            
-            # Update the existing shift if shift_id is provided, otherwise create a new one
+
+            shift_data.setdefault("worker_id", proposal.worker_id)
+
             if shift_id:
-                existing_shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
-                if existing_shift:
-                    for key, value in shift_data.items():
-                        setattr(existing_shift, key, value)
-                    print(existing_shift)
-                else:
-                    # Fallback: create a new shift if the referenced shift doesn't exist
-                    new_shift = models.Shift(id=shift_id, **shift_data)
-                    db.add(new_shift)
+                result_shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
+
+            if result_shift:
+                for key, value in shift_data.items():
+                    setattr(result_shift, key, value)
             else:
-                new_shift = models.Shift(**shift_data)
-                db.add(new_shift)
-        print(new_shift)
+                result_shift = models.Shift(**({"id": shift_id} if shift_id else {}), **shift_data)
+                db.add(result_shift)
+
         db.delete(proposal)
         db.commit()
-        return {"success": True, "message": "Proposal fully approved, shift updated, and proposal deleted.","deleted":True, "new_shift":new_shift or existing_shift}
-    else:
-        db.commit()
-        db.refresh(proposal)
-        return proposal
+
+        if result_shift is not None:
+            db.refresh(result_shift)
+
+        return {
+            "success": True,
+            "message": "Proposal fully approved, shift updated, and proposal deleted.",
+            "deleted": True,
+            "new_shift": result_shift,
+            "proposal": None,
+        }
+
+    # --- partial approval → return envelope with the updated proposal ---
+    db.commit()
+    db.refresh(proposal)
+    return {
+        "success": True,
+        "message": "Approval recorded. Waiting for the other party.",
+        "deleted": False,
+        "new_shift": None,
+        "proposal": proposal,
+    }

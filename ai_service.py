@@ -71,7 +71,6 @@ class LocalLLMShiftAssistant:
             "- Always call `create_reschedule_proposal` when the user wants to propose rescheduling a shift.\n"
             "- Provide helpful and clear responses."
         )
-        print(system_prompt)
 
         messages = [{"role": "system", "content": system_prompt}]
         if chat_history:

@@ -211,7 +211,7 @@ def tool_create_reschedule_proposal(
         "success": True,
         "message": f"Successfully created reschedule proposal #{proposal.id}.",
         "proposal": {
-            "proposal_id": proposal.id,
+            "id": proposal.id,
             "worker_id": proposal.worker_id,
             "new_shift_data": proposal.new_shift_data,
             "isManagerApproved": proposal.isManagerApproved,
