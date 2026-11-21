@@ -14,10 +14,8 @@ app.include_router(chat.router)
 app.include_router(shifts.router)
 
 origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
     "http://localhost:5173",
-    "http://localhost:8080",
+    "http://ihesami.github.io/shiftBridge-UI",
 ]
 
 app.add_middleware(

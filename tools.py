@@ -176,7 +176,6 @@ def tool_create_reschedule_proposal(
             "success": False,
             "error": f"Shift with ID {shift_id} not found or does not belong to you."
         }
-    print('creating proposal')
     proposal_id = str(uuid.uuid4())
     new_shift_data_payload = {
         "shift_id": shift.id,
@@ -203,7 +202,6 @@ def tool_create_reschedule_proposal(
         db.add(proposal)
         db.commit()
         db.refresh(proposal)
-        print('proposal added' )
     except Exception as e:
         print('proposal added' ,e)
 
