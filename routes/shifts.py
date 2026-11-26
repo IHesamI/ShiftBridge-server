@@ -26,7 +26,7 @@ def get_project_by_id(project_id: str, db: Session = Depends(get_db)):
 @router.get("/workers", response_model=List[schemas.WorkerResponse])
 def get_workers(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """Retrieve all seeded workers."""
-    return db.query(models.Worker).all()
+    return db.query(models.Worker).all() if current_user.is_manager else [current_user]
 
 @router.get("/shifts", response_model=List[schemas.ShiftResponse])
 def get_all_shifts(project_id: Optional[str] = None, db: Session = Depends(get_db)):
