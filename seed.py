@@ -4,10 +4,9 @@ Creates:
 - 1 Manager worker (with is_manager=True)
 - 15 Workers with specific emails, roles, departments, avatars, and hour metrics
 - 3 Projects with the manager worker and workers assigned via association table
-- Initial scheduled shifts for workers across days of the week, including
-  2 shifts for worker1 across two different projects
+- Realistic scheduled shifts for workers across days of the week, with
+  role/department-specific patterns and 2 shifts for worker1 in 2 projects.
 """
-import random
 import sys
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -15,8 +14,7 @@ from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base
 import models
 import security
-def random_generator(lower=1000,upper=100000):
-    return random.uniform(lower, upper)
+
 WORKERS_DATA = [
     {"id": "w1", "email": "worker1@shiftbridge.com", "name": "Alex Morgan", "role": "Senior RN", "department": "Emergency", "max_hours": 40.0, "current_hours": 32.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex", "is_manager": False},
     {"id": "w2", "email": "worker2@shiftbridge.com", "name": "Brian Davis", "role": "RN", "department": "ICU", "max_hours": 40.0, "current_hours": 36.0, "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Brian", "is_manager": False},
@@ -68,6 +66,66 @@ PROJECTS_DATA = [
 DEFAULT_PASSWORD = "password123"
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+# ---------------------------------------------------------------------------
+# Shift templates. Each template = (type, start_time, length_hours).
+# Chosen so total weekly hours stay under the worker's max_hours.
+# ---------------------------------------------------------------------------
+SHIFT_TEMPLATES = {
+    # 12-hour ICU/ER rotations
+    "day12":   {"type": "regular", "start_time": "07:00", "length": 12.0},
+    "night12": {"type": "night",   "start_time": "19:00", "length": 12.0},
+    # 8-hour hospital shifts
+    "day8":    {"type": "regular", "start_time": "07:00", "length": 8.0},
+    "eve8":    {"type": "regular", "start_time": "15:00", "length": 8.0},
+    "night8":  {"type": "night",   "start_time": "23:00", "length": 8.0},
+    # Part-time / support blocks
+    "am4":     {"type": "regular", "start_time": "08:00", "length": 4.0},
+    "pm4":     {"type": "regular", "start_time": "13:00", "length": 4.0},
+    # On-call
+    "oncall":  {"type": "on_call", "start_time": "18:00", "length": 6.0},
+}
+
+# Per-worker weekly pattern: list of (day, template_key, project_key)
+# Keep total hours <= max_hours for each worker.
+WORKER_SHIFT_PLANS = {
+    "w1":  [("Monday", "day12", "proj_1"), ("Wednesday", "eve8", "proj_2"),
+            ("Friday", "day8", "proj_1")],                              # 28h
+    "w2":  [("Tuesday", "day12", "proj_2"), ("Thursday", "night12", "proj_2")],  # 24h
+    "w3":  [("Monday", "day12", "proj_1"), ("Wednesday", "day12", "proj_1"),
+            ("Saturday", "day8", "proj_1")],                            # 32h
+    "w4":  [("Tuesday", "day8", "proj_3"), ("Thursday", "eve8", "proj_3")],      # 16h
+    "w5":  [("Monday", "day8", "proj_2"), ("Wednesday", "eve8", "proj_2"),
+            ("Friday", "day8", "proj_2")],                              # 24h
+    "w6":  [("Tuesday", "am4", "proj_3"), ("Thursday", "pm4", "proj_3")],        # 8h
+    "w7":  [("Monday", "day12", "proj_2"), ("Thursday", "night12", "proj_2"),
+            ("Saturday", "day12", "proj_2")],                           # 36h
+    "w8":  [("Tuesday", "day8", "proj_3"), ("Friday", "eve8", "proj_3")],        # 16h
+    "w9":  [("Monday", "day8", "proj_2"), ("Wednesday", "day8", "proj_2"),
+            ("Friday", "eve8", "proj_2")],                              # 24h
+    "w10": [("Tuesday", "day8", "proj_1"), ("Thursday", "eve8", "proj_1")],      # 16h
+    "w11": [("Monday", "day8", "proj_3"), ("Wednesday", "day8", "proj_3")],      # 16h
+    "w12": [("Tuesday", "am4", "proj_2"), ("Thursday", "pm4", "proj_2")],        # 8h
+    "w13": [("Monday", "day8", "proj_3"), ("Wednesday", "eve8", "proj_3"),
+            ("Friday", "day8", "proj_3")],                              # 24h
+    "w14": [("Tuesday", "day12", "proj_1"), ("Saturday", "night12", "proj_1")],  # 24h
+    "w15": [("Monday", "eve8", "proj_1"), ("Thursday", "day8", "proj_1")],       # 16h
+}
+
+
+def _shift_note(worker, template_key, project, day):
+    dept = worker.department
+    base = {
+        "day12":   f"12-hour day rotation ({dept})",
+        "night12": f"12-hour night rotation ({dept})",
+        "day8":    f"Day shift — {dept}",
+        "eve8":    f"Evening shift — {dept}",
+        "night8":  f"Overnight shift — {dept}",
+        "am4":     f"Morning support block — {dept}",
+        "pm4":     f"Afternoon support block — {dept}",
+        "oncall":  f"On-call coverage — {dept}",
+    }[template_key]
+    return f"{base} on {project.title}"
+
 
 def seed_database(db: Optional[Session] = None, reset: bool = False):
     """Seed the database with 1 manager worker, 15 workers, 3 projects, and shifts."""
@@ -81,11 +139,12 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
             print("Resetting and dropping database tables...")
             Base.metadata.drop_all(bind=engine)
 
-        # Ensure all tables exist with the latest schema
         Base.metadata.create_all(bind=engine)
 
-        # 1. Create or get Manager (as a Worker with is_manager=True)
-        manager = db.query(models.Worker).filter(models.Worker.email == MANAGER_DATA["email"]).first()
+        # 1. Manager
+        manager = db.query(models.Worker).filter(
+            models.Worker.email == MANAGER_DATA["email"]
+        ).first()
         if not manager:
             manager = models.Worker(
                 id=MANAGER_DATA["id"],
@@ -97,7 +156,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
                 max_hours=MANAGER_DATA["max_hours"],
                 current_hours=MANAGER_DATA["current_hours"],
                 avatar=MANAGER_DATA["avatar"],
-                is_manager=True
+                is_manager=True,
             )
             db.add(manager)
             db.commit()
@@ -108,7 +167,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
             db.commit()
             print(f"Manager Worker already exists: {manager.email} [ID: {manager.id}]")
 
-        # 2. Create or get 15 regular Workers
+        # 2. Workers
         workers_by_id = {}
         workers = []
         for w_data in WORKERS_DATA:
@@ -124,7 +183,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
                     max_hours=w_data["max_hours"],
                     current_hours=w_data["current_hours"],
                     avatar=w_data["avatar"],
-                    is_manager=False
+                    is_manager=False,
                 )
                 db.add(worker)
                 db.commit()
@@ -137,7 +196,7 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
             workers.append(worker)
             workers_by_id[worker.id] = worker
 
-        # 3. Create or get 3 Projects with the Manager and assigned Workers
+        # 3. Projects
         projects = []
         for p_data in PROJECTS_DATA:
             assigned_workers = [workers_by_id[wid] for wid in p_data["worker_ids"] if wid in workers_by_id]
@@ -147,14 +206,12 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
                     id=p_data["id"],
                     manager_id=manager.id,
                     title=p_data["title"],
-                    workers=assigned_workers
+                    workers=assigned_workers,
                 )
                 db.add(project)
                 db.commit()
                 db.refresh(project)
                 print(f"\nCreated Project: '{project.title}' [ID: {project.id}]")
-                print(f"  Manager ID: {project.manager_id} ({manager.name})")
-                print(f"  Assigned Workers: {len(project.workers)} workers")
             else:
                 existing_worker_ids = {w.id for w in project.workers}
                 for w in assigned_workers:
@@ -163,84 +220,80 @@ def seed_database(db: Optional[Session] = None, reset: bool = False):
                 project.manager_id = manager.id
                 db.commit()
                 db.refresh(project)
-                print(f"\nProject '{project.title}' already exists [ID: {project.id}] with {len(project.workers)} workers.")
+                print(f"\nProject '{project.title}' already exists [ID: {project.id}]")
             projects.append(project)
 
-        # 4. Create sample shifts across projects, ensuring worker1 (w1) has 2 shifts in 2 projects
+        projects_by_id = {p.id: p for p in projects}
+
+        # 4. Realistic shifts, derived from per-worker plans
         shifts_created = 0
-        monday_id=random_generator()
-        wednesday_id=random_generator()
-        shifts_to_seed = [
-            # Two shifts for target worker w1 across proj_1 and proj_2
-            {
-                "id": f"shift_w1_proj_1_{monday_id}",
-                "project_id": "proj_1",
-                "worker_id": "w1",
-                "day": "Monday",
-                "type": "regular",
-                "start_time": "07:00",
-                "length": 8.0,
-                "note": "Primary hospital schedule shift",
-                "updated_by_ai": False,
-                "conflict_reason": "",
-            },
-            {
-                "id": f"shift_w1_proj_2_{wednesday_id}",
-                "project_id": "proj_2",
-                "worker_id": "w1",
-                "day": "Wednesday",
-                "type": "regular",
-                "start_time": "15:00",
-                "length": 8.0,
-                "note": "ICU rotation shift",
-                "updated_by_ai": False,
-                "conflict_reason": "",
-            },
-        ]
+        shifts_skipped = 0
+        hours_by_worker = {}  # worker_id -> total seeded hours
 
-        # Seed shifts for remaining workers across projects
-        for i, worker in enumerate(workers[1:], start=1):
-            day = DAYS_OF_WEEK[i % len(DAYS_OF_WEEK)]
-            target_project = projects[i % len(projects)]
-            shifts_to_seed.append({
-                "id": f"shift_{worker.id}_{target_project.id}_{random_generator()}",
-                "project_id": target_project.id,
-                "worker_id": worker.id,
-                "day": day,
-                "type": "regular",
-                "start_time": "07:00",
-                "length": 8.0,
-                "note": "Regular scheduled shift",
-                "updated_by_ai": False,
-                "conflict_reason": "",
-            })
+        for worker_id, plan in WORKER_SHIFT_PLANS.items():
+            worker = workers_by_id.get(worker_id)
+            if not worker:
+                continue
+            # Guard against over-scheduling
+            planned_hours = 0.0
+            for day, tpl_key, proj_key in plan:
+                tpl = SHIFT_TEMPLATES[tpl_key]
+                project = projects_by_id[proj_key]
+                shift_id = f"shift_{worker.id}_{proj_key}_{day.lower()}"
+                planned_hours += tpl["length"]
 
-        for s_data in shifts_to_seed:
-            existing_shift = db.query(models.Shift).filter(models.Shift.id == s_data["id"]).first()
-            if not existing_shift:
-                shift = models.Shift(**s_data)
+                existing = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
+                if existing:
+                    shifts_skipped += 1
+                    continue
+
+                shift = models.Shift(
+                    id=shift_id,
+                    project_id=proj_key,
+                    worker_id=worker.id,
+                    day=day,
+                    type=tpl["type"],
+                    start_time=tpl["start_time"],
+                    length=tpl["length"],
+                    note=_shift_note(worker, tpl_key, project, day),
+                    updated_by_ai=False,
+                    conflict_reason="",
+                )
                 db.add(shift)
                 shifts_created += 1
 
-        if shifts_created > 0:
+            if planned_hours > worker.max_hours:
+                print(f"  WARNING: {worker.name} planned {planned_hours}h "
+                      f"> max_hours {worker.max_hours}h")
+
+            hours_by_worker[worker.id] = planned_hours
+
+        if shifts_created:
             db.commit()
-            print(f"\nCreated {shifts_created} scheduled shifts for workers.")
-        else:
-            print("\nShifts already populated.")
+
+        # Reflect scheduled hours back onto workers so dashboard numbers match shifts
+        for worker_id, hrs in hours_by_worker.items():
+            worker = workers_by_id[worker_id]
+            # Only overwrite if the seeded plan is the source of truth
+            worker.current_hours = min(hrs, worker.max_hours)
+        db.commit()
+
+        print(f"\nCreated {shifts_created} scheduled shifts "
+              f"({shifts_skipped} already existed).")
 
         print("\n" + "=" * 60)
         print("SEEDING COMPLETE!")
         print("=" * 60)
-        print(f"Projects seeded: {len(projects)} ({', '.join(p.title for p in projects)})")
+        print(f"Projects seeded: {len(projects)}")
         print(f"Manager: {manager.email} | Password: {DEFAULT_PASSWORD}")
-        print(f"Workers: {len(workers)} workers created/assigned with credentials")
+        print(f"Workers: {len(workers)} workers created/assigned")
         print("=" * 60)
 
         return {
             "manager_id": manager.id,
             "project_ids": [p.id for p in projects],
             "workers_count": len(workers),
-            "shifts_created": shifts_created
+            "shifts_created": shifts_created,
         }
 
     finally:
